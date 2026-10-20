@@ -36,8 +36,8 @@ from utils.brick import Motor, EV3ColorSensor, NXTColorSensor, reset_brick
 MODE = "square"          # "square", "float", "straight", "turn", "sensors" or "raw"
 
 # --- Hardware (same motor setup as Lab 1) ---
-LEFT_MOTOR_PORT = "A"
-RIGHT_MOTOR_PORT = "D"
+LEFT_MOTOR_PORT = "D"
+RIGHT_MOTOR_PORT = "A"
 LEFT_LIGHT_PORT = 2      # port of the sensor mounted on the robot's LEFT side (NXT)
 RIGHT_LIGHT_PORT = 4     # port of the sensor mounted on the robot's RIGHT side (EV3)
 LEFT_LIGHT_TYPE = "NXT"  # CHECK: "EV3" or "NXT" (printed on the sensor)

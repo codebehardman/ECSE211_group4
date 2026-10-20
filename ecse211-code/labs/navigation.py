@@ -42,8 +42,8 @@ WAYPOINTS = [
 ]
 
 # --- Hardware (same as odometry.py) ---
-LEFT_MOTOR_PORT = "A"
-RIGHT_MOTOR_PORT = "D"
+LEFT_MOTOR_PORT = "D"
+RIGHT_MOTOR_PORT = "A"
 LEFT_LIGHT_PORT = 2      # port of the sensor mounted on the robot's LEFT side (NXT)
 RIGHT_LIGHT_PORT = 4     # port of the sensor mounted on the robot's RIGHT side (EV3)
 LEFT_LIGHT_TYPE = "NXT"  # CHECK: "EV3" or "NXT" (printed on the sensor)

@@ -16,6 +16,8 @@ Modes:
   "turn"   -> tuning: make four 90 deg turns (one full turn) to check TRACK
   "sensors" -> tuning: motors float, prints both light readings so you can slide
               the robot over a line by hand and check the thresholds
+  "raw"    -> tuning: motors float, prints ONLY the raw readings of both sensors
+              (no calibration, no thresholds) so each sensor can be calibrated
 
 Stop with Ctrl+C.
 """
@@ -31,16 +33,16 @@ from utils.brick import Motor, EV3ColorSensor, NXTColorSensor, reset_brick
 
 # ============================ SETTINGS ============================
 
-MODE = "square"          # "square", "float", "straight", "turn" or "sensors"
+MODE = "square"          # "square", "float", "straight", "turn", "sensors" or "raw"
 
 # --- Hardware (same motor setup as Lab 1) ---
 LEFT_MOTOR_PORT = "A"
 RIGHT_MOTOR_PORT = "D"
-LEFT_LIGHT_PORT = 3      # CHECK: port of the sensor mounted on the robot's LEFT side
-RIGHT_LIGHT_PORT = 2    # CHECK: port of the sensor mounted on the robot's RIGHT side
+LEFT_LIGHT_PORT = 2      # port of the sensor mounted on the robot's LEFT side (NXT)
+RIGHT_LIGHT_PORT = 4     # port of the sensor mounted on the robot's RIGHT side (EV3)
 LEFT_LIGHT_TYPE = "NXT"  # CHECK: "EV3" or "NXT" (printed on the sensor)
 RIGHT_LIGHT_TYPE = "EV3" # CHECK: "EV3" or "NXT"
-MOTOR_DIRECTION = -1     # motors mounted backwards, same as Lab 1
+MOTOR_DIRECTION = 1      # motors flipped around after Lab 2 (was -1)
 
 # --- Robot geometry (MEASURE, then tune) ---
 WHEEL_RADIUS = 2.10      # cm
@@ -75,8 +77,8 @@ LINE_SLACK = 6.0         # cm, if no line is seen this far past where it should 
 # A sensor sees a line when its reading drops below RATIO x (its own wood reading).
 # Each sensor gets its own ratio: use MODE = "sensors" to see what % of wood each one reads on a line,
 # then pick a ratio about halfway between that % and 100%.
-LEFT_LINE_RATIO = 0.925  # LOWER this if the left sensor says LINE on plain wood
-RIGHT_LINE_RATIO = 0.8   # RAISE this if the right sensor misses lines
+LEFT_LINE_RATIO = 0.97   # measured: wood sum ~1370 (1350-1388), line ~1296 (1286-1305) -> threshold ~1329
+RIGHT_LINE_RATIO = 0.75  # measured: wood red ~22 (18-23), line ~13.5 (13-14) -> threshold ~16.5
 LINE_CONFIRM = 2         # dark readings in a row needed before a line counts (filters noise)
 
 # --- Odometer ---
@@ -97,7 +99,7 @@ def make_light_sensor(port, kind):
 
 
 # Light sensors are only created in square mode, so float mode works without them
-USES_LIGHT = MODE in ("square", "sensors")
+USES_LIGHT = MODE in ("square", "sensors", "raw")
 left_light = make_light_sensor(LEFT_LIGHT_PORT, LEFT_LIGHT_TYPE) if USES_LIGHT else None
 right_light = make_light_sensor(RIGHT_LIGHT_PORT, RIGHT_LIGHT_TYPE) if USES_LIGHT else None
 
@@ -497,6 +499,30 @@ def run_sensor_test():
         time.sleep(0.2)
 
 
+def run_raw_sensor_test():
+    """Motors float; print only the raw readings of both light sensors, nothing else."""
+    left_motor.float_motor()
+    right_motor.float_motor()
+    if not wait_for_light_sensors():
+        return
+
+    def describe(sensor, kind, port):
+        label = f"({kind}, port {port})"
+        if isinstance(sensor, NXTColorSensor):
+            rgb = sensor.get_rgb()
+            if None in rgb:
+                return f"{label} no reading"
+            r, g, b = rgb
+            return f"{label} R = {r:4.0f}  G = {g:4.0f}  B = {b:4.0f}  sum = {r + g + b:4.0f}"
+        red = sensor.get_red()
+        return f"{label} no reading" if red is None else f"{label} red = {red:5.1f}"
+
+    while True:
+        print(f"LEFT {describe(left_light, LEFT_LIGHT_TYPE, LEFT_LIGHT_PORT)}   |   "
+              f"RIGHT {describe(right_light, RIGHT_LIGHT_TYPE, RIGHT_LIGHT_PORT)}")
+        time.sleep(0.2)
+
+
 # ============================ MAIN ============================
 
 def main():
@@ -512,6 +538,10 @@ def main():
 
     if MODE == "sensors":
         run_sensor_test()
+        return
+
+    if MODE == "raw":
+        run_raw_sensor_test()
         return
 
     print("Square mode: starting up.")

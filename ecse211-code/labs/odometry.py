@@ -48,7 +48,7 @@ MOTOR_DIRECTION = 1      # motors flipped around after Lab 2 (was -1)
 WHEEL_RADIUS = 2.10      # cm
 RIGHT_WHEEL_SCALE = 1.0  # right wheel's effective size / left wheel's. >1 if it curves LEFT while theta reads 0
 TRACK = 14.8            # cm, distance between the two wheels' contact points
-SENSOR_OFFSET = 39    # cm, how far AHEAD of the wheel axle the light sensors sit
+SENSOR_OFFSET = 5    # cm, how far AHEAD of the wheel axle the light sensors sit
 
 # --- Board ---
 TILE = 30.48             # cm
@@ -58,14 +58,14 @@ START_THETA = 0.0        # facing +y
 
 # --- Motion ---
 FORWARD_SPEED = 150      # deg/s
-SLOW_SPEED = 70          # deg/s, speed near a line: both sensors must reach it at the SAME speed
+SLOW_SPEED = 95          # deg/s, speed near a line: both sensors must reach it at the SAME speed
                          # or the faster one overshoots more and the robot lines up crooked
-TURN_SPEED = 100         # deg/s
+TURN_SPEED = 60        # deg/s
 TURN_SLOW_SPEED = 40     # deg/s, last few degrees of a turn
 TURN_TOLERANCE = 1.0     # deg, a turn is done when within this of the target
 KP_HEADING = 4.0         # deg/s of wheel speed difference per degree of heading error
 MAX_HEADING_CORR = 50    # deg/s, cap on the heading correction
-MAX_ALIGN_TURN = 20.0    # deg, if lining up on a line rotates us more than this, it was the wrong line
+MAX_ALIGN_TURN = 15    # deg, if lining up on a line rotates us more than this, it was the wrong line
 LINE_CLEAR = 4.0         # cm to drive after a line so it isn't detected twice
 MAX_LINE_WAIT = 2.0      # s, give up waiting for the second sensor after this
 LINE_WINDOW = 8.0        # cm, slow down and look for a line once the sensors are this close to it

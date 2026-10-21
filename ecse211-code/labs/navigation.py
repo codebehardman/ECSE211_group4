@@ -54,7 +54,7 @@ MOTOR_DIRECTION = 1      # motors flipped around after Lab 2 (was -1)
 WHEEL_RADIUS = 2.10      # cm
 RIGHT_WHEEL_SCALE = 1.0  # right wheel's effective size / left wheel's
 TRACK = 11.3            # cm, distance between the two wheels' contact points
-SENSOR_OFFSET = 6       # cm, how far AHEAD of the wheel axle the light sensors sit. CHECK: measure this
+SENSOR_OFFSET = 5        # cm, how far AHEAD of the wheel axle the light sensors sit. CHECK: measure this
 
 # --- Board ---
 TILE = 30.48             # cm
@@ -67,11 +67,11 @@ SLOW_SPEED = 95         # deg/s, speed near a line and for the last few cm
 TURN_SPEED = 60        # deg/s
 TURN_SLOW_SPEED = 40     # deg/s, last few degrees of a turn
 TURN_SLOW_ZONE = 15.0    # deg, slow down for the last this many degrees of a turn
-TURN_TOLERANCE = 0.5     # deg, a turn is done when within this of the target
+TURN_TOLERANCE = 1.0     # deg, a turn is done when within this of the target
 SLOW_ZONE = 3.0          # cm, slow down for the last this many cm of a straight drive
 KP_STRAIGHT = 3.0        # deg/s of wheel speed difference per degree of wheel encoder mismatch
 MAX_STRAIGHT_CORR = 50   # deg/s, cap on the straight-line correction
-MAX_LINE_WAIT = 1.0      # s, give up waiting for the second sensor after this
+MAX_LINE_WAIT = 2.0      # s, give up waiting for the second sensor after this
 LINE_WINDOW = 5.0        # cm, start looking for a line once the sensors are this close to it
 LINE_SLACK = 6.0         # cm, if no line is seen this far past where it should be, it was missed
 MIN_LINE_GAP = 3.0       # cm, ignore a line that is already (almost) under the sensors at the start
@@ -79,7 +79,7 @@ ALIGN_TRIM = 0.0         # deg, how crooked the robot really is after lining up 
 PAUSE = 0.3              # s, pause between moves so the robot settles
 
 # --- Light sensor (same values as odometry.py, tune there with "sensors"/"raw") ---
-LEFT_LINE_RATIO = 0.96   # measured: wood sum ~1370 (1350-1388), line ~1296 (1286-1305) -> threshold ~1329
+LEFT_LINE_RATIO = 0.97   # measured: wood sum ~1370 (1350-1388), line ~1296 (1286-1305) -> threshold ~1329
 RIGHT_LINE_RATIO = 0.75  # measured: wood red ~22 (18-23), line ~13.5 (13-14) -> threshold ~16.5
 LINE_CONFIRM = 4         # dark readings in a row needed before a line counts (filters noise)
 

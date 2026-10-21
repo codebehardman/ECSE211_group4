@@ -68,7 +68,7 @@ SLOW_SPEED = 95         # deg/s, speed near a line and for the last few cm
 TURN_SPEED = 60        # deg/s
 TURN_SLOW_SPEED = 40     # deg/s, last few degrees of a turn
 TURN_SLOW_ZONE = 15.0    # deg, slow down for the last this many degrees of a turn
-TURN_TOLERANCE = 1.0     # deg, a turn is done when within this of the target
+TURN_TOLERANCE = 0.3     # deg, a turn is done when within this of the target (1.0 left every turn ~1 deg short)
 SLOW_ZONE = 3.0          # cm, slow down for the last this many cm of a straight drive
 KP_STRAIGHT = 3.0        # deg/s of wheel speed difference per degree of wheel encoder mismatch
 MAX_STRAIGHT_CORR = 50   # deg/s, cap on the straight-line correction
@@ -79,7 +79,8 @@ ALIGN_TRIM = 0.0         # deg, how crooked the robot really is (see odometry.py
 MAX_HIT_GAP = 4.0        # cm, if the 2nd sensor hasn't crossed this far after the 1st, give up on it
 MAX_POS_FIX = 4.0        # cm, a line that would move the position more than this is treated as a false reading
 MAX_ANGLE_FIX = 6.0      # deg, a measured angle bigger than this is treated as noise
-ANGLE_GAIN = 0.0         # fraction of the measured angle error applied at each line (0-1)
+ANGLE_GAIN = 0.5         # fraction of the measured crookedness turned out at each line (0 = off, 1 = all of it)
+MIN_ANGLE_FIX = 0.5      # deg, don't bother straightening if the robot is less crooked than this
 PAUSE = 0.3              # s, pause between moves so the robot settles
 
 # --- Light sensor (same values as odometry.py, tune there with "sensors"/"raw") ---
@@ -402,11 +403,16 @@ def drive_through_line(axis, sign, line):
     if abs(crooked) > MAX_ANGLE_FIX:
         print(f"{name}: angle {crooked:+.1f} deg looks wrong, position fixed only.")
         return
-    # Move the heading only part of the way toward the measured value, so one noisy reading can't steer us off
-    leg_heading = round(heading / 90) * 90
-    measured = leg_heading + crooked + ALIGN_TRIM
-    heading = wrap_angle(heading + ANGLE_GAIN * ((measured - heading + 540) % 360 - 180))
     print(f"{name}: position fixed by {error:+.1f} cm, robot is {crooked:+.1f} deg off.")
+
+    # Straighten the robot so turn errors don't add up from leg to leg. Only part of the
+    # measured angle is turned out (ANGLE_GAIN), so one noisy reading can't steer us off.
+    fix = ANGLE_GAIN * (crooked + ALIGN_TRIM)
+    if abs(fix) >= MIN_ANGLE_FIX:
+        set_speeds(0, 0)
+        time.sleep(PAUSE)
+        turn_by(-fix)                            # also updates the heading
+        heading = wrap_angle(heading + fix)      # ...but the robot was crooked to begin with
 
 
 # ============================ NAVIGATION ============================

@@ -5,14 +5,14 @@ ECSE 211 - Lab 3: Navigation
 Drives through WAYPOINTS (in tiles) starting from the origin (0, 0), facing +y.
 
 Modes:
-  "safest"   -> travel in x, then in y, to each waypoint. Every grid line crossed
-                is used to square the robot up and reset its position (Lab 2 correction).
+  "safest"   -> travel in x, then in y, to each waypoint. The robot drives
+                straight over every grid line and uses it to fix its position.
   "shortest" -> turn the minimal angle towards each waypoint and drive straight to it.
 
 No odometer thread: every move is a measured turn or straight drive using the
 wheel encoders, and the robot keeps track of where it is from the moves it made.
-In "safest" mode that position is overwritten every time both light sensors
-line up on a grid line, so encoder errors never build up over more than one tile.
+In "safest" mode the position along the path is fixed every time a light sensor
+crosses a grid line, so encoder errors never build up over more than one tile.
 
 Conventions (same as Lab 2):
   - heading is compass-style: 0 = facing +y, measured CLOCKWISE.
@@ -54,7 +54,8 @@ MOTOR_DIRECTION = 1      # motors flipped around after Lab 2 (was -1)
 WHEEL_RADIUS = 2.10      # cm
 RIGHT_WHEEL_SCALE = 1.0  # right wheel's effective size / left wheel's
 TRACK = 11.3            # cm, distance between the two wheels' contact points
-SENSOR_OFFSET = 5        # cm, how far AHEAD of the wheel axle the light sensors sit. CHECK: measure this
+SENSOR_OFFSET = 5        # cm, how far AHEAD of the wheel axle the light sensors sit
+SENSOR_SPACING = 10.0    # cm, measured: distance between the two light sensors (left to right)
 
 # --- Board ---
 TILE = 30.48             # cm
@@ -71,17 +72,20 @@ TURN_TOLERANCE = 1.0     # deg, a turn is done when within this of the target
 SLOW_ZONE = 3.0          # cm, slow down for the last this many cm of a straight drive
 KP_STRAIGHT = 3.0        # deg/s of wheel speed difference per degree of wheel encoder mismatch
 MAX_STRAIGHT_CORR = 50   # deg/s, cap on the straight-line correction
-MAX_LINE_WAIT = 2.0      # s, give up waiting for the second sensor after this
 LINE_WINDOW = 5.0        # cm, start looking for a line once the sensors are this close to it
 LINE_SLACK = 6.0         # cm, if no line is seen this far past where it should be, it was missed
 MIN_LINE_GAP = 3.0       # cm, ignore a line that is already (almost) under the sensors at the start
-ALIGN_TRIM = 0.0         # deg, how crooked the robot really is after lining up (see odometry.py)
+ALIGN_TRIM = 0.0         # deg, how crooked the robot really is (see odometry.py)
+MAX_HIT_GAP = 4.0        # cm, if the 2nd sensor hasn't crossed this far after the 1st, give up on it
+MAX_POS_FIX = 4.0        # cm, a line that would move the position more than this is treated as a false reading
+MAX_ANGLE_FIX = 6.0      # deg, a measured angle bigger than this is treated as noise
+ANGLE_GAIN = 0.0         # fraction of the measured angle error applied at each line (0-1)
 PAUSE = 0.3              # s, pause between moves so the robot settles
 
 # --- Light sensor (same values as odometry.py, tune there with "sensors"/"raw") ---
 LEFT_LINE_RATIO = 0.97   # measured: wood sum ~1370 (1350-1388), line ~1296 (1286-1305) -> threshold ~1329
 RIGHT_LINE_RATIO = 0.75  # measured: wood red ~22 (18-23), line ~13.5 (13-14) -> threshold ~16.5
-LINE_CONFIRM = 4         # dark readings in a row needed before a line counts (filters noise)
+LINE_CONFIRM_DIST = 0.3  # cm a sensor must stay dark before a line counts (filters noise)
 
 # ==================================================================
 
@@ -307,62 +311,102 @@ def get_axis(axis):
     return x if axis == "x" else y
 
 
-def drive_to_line(axis, sign, line):
+def drive_through_line(axis, sign, line):
     """
-    Drive forward until both sensors sit on the grid line at position `line` (cm).
-    The wheel whose sensor hits first stops; the other keeps going slowly until
-    its sensor hits too, which squares the robot up with the line. The position
-    along the axis and the heading are then reset from the line.
-    Sensors are only watched near where the line should be, and if nothing is
-    seen LINE_SLACK cm past it, the line counts as missed.
+    Drive straight over the grid line at position `line` (cm) WITHOUT stopping or pivoting
+    (same method as odometryclaude.py). Records where each sensor crosses the line:
+      - both crossed  -> fix the position along the path, and measure how crooked the robot is
+                         from the gap between the two crossings
+      - one crossed   -> fix the position only (the other sensor is riding a parallel line,
+                         is over the board edge, or missed it)
+      - none          -> encoders only
+    Only a wood -> dark change counts as a crossing, so a sensor sitting on a line
+    parallel to the path (or on the dark floor past the board edge) is ignored.
     """
     global heading
-    leg_heading = heading
     seg = Segment()
-    to_line = (line - sign * SENSOR_OFFSET - get_axis(axis)) * sign   # axle travel until sensors reach it
-    left_done = right_done = False
-    left_dark = right_dark = 0
-    first_hit_time = None
+    start_along = get_axis(axis) * sign          # axle position measured in the direction of travel
+    left_armed = right_armed = False             # sensor has seen wood inside the search window
+    left_dark_from = right_dark_from = None      # where the current dark stretch started
+    left_hit = right_hit = None                  # axle position where each sensor reached the line
 
-    while not (left_done and right_done):
-        if first_hit_time is None:
-            remaining = to_line - seg.distance()
-            if remaining < -LINE_SLACK:
-                print(f"Missed the line at {axis} = {line / TILE:.0f} tiles, using the encoders only.")
-                break
-            if remaining > LINE_WINDOW:            # too far away, ignore dark spots in the wood
-                set_speeds(*seg.straight_speeds(FORWARD_SPEED))
-                time.sleep(0.005)
-                continue
+    while True:
+        pos = start_along + seg.distance()
+        remaining = line * sign - (pos + SENSOR_OFFSET)   # sensors' distance to the line
+        if remaining > LINE_WINDOW:              # far from the line: full speed, ignore the sensors
+            set_speeds(*seg.straight_speeds(FORWARD_SPEED))
+            time.sleep(0.005)
+            continue
 
-        if not left_done:
-            left_dark = left_dark + 1 if on_line(left_light, left_threshold) else 0
-            left_done = left_dark >= LINE_CONFIRM
-        if not right_done:
-            right_dark = right_dark + 1 if on_line(right_light, right_threshold) else 0
-            right_done = right_dark >= LINE_CONFIRM
+        # A line counts only if the sensor goes wood -> dark and STAYS dark for LINE_CONFIRM_DIST cm.
+        # The hit is recorded where the dark stretch started (the line's edge).
+        if left_hit is None:
+            if not on_line(left_light, left_threshold):
+                left_armed, left_dark_from = True, None
+            elif left_armed:
+                if left_dark_from is None:
+                    left_dark_from = pos
+                elif pos - left_dark_from >= LINE_CONFIRM_DIST:
+                    left_hit = left_dark_from
+        if right_hit is None:
+            if not on_line(right_light, right_threshold):
+                right_armed, right_dark_from = True, None
+            elif right_armed:
+                if right_dark_from is None:
+                    right_dark_from = pos
+                elif pos - right_dark_from >= LINE_CONFIRM_DIST:
+                    right_hit = right_dark_from
 
-        if (left_done or right_done) and first_hit_time is None:
-            first_hit_time = time.time()
-        if first_hit_time and time.time() - first_hit_time > MAX_LINE_WAIT:
-            missed = "RIGHT" if left_done else "LEFT"
-            print(f"{missed} sensor missed the line at {axis} = {line / TILE:.0f} tiles. Skipping alignment.")
+        if left_hit is not None and right_hit is not None:
             break
+        first = left_hit if left_hit is not None else right_hit
+        if first is not None and pos - first > MAX_HIT_GAP:
+            break                                # the second sensor isn't going to cross
+        if remaining < -LINE_SLACK:
+            break                                # nothing seen: missed the line
 
-        if not (left_done or right_done):
-            set_speeds(*seg.straight_speeds(SLOW_SPEED))         # near the line: creep straight
-        else:
-            set_speeds(0 if left_done else SLOW_SPEED, 0 if right_done else SLOW_SPEED)
+        set_speeds(*seg.straight_speeds(SLOW_SPEED))
         time.sleep(0.002)
 
-    set_speeds(0, 0)
-    if left_done and right_done:
-        set_axis(axis, line - sign * SENSOR_OFFSET)   # axle is SENSOR_OFFSET behind the sensors
-        heading = wrap_angle(leg_heading + ALIGN_TRIM)
-        print(f"Lined up on the line at {axis} = {line / TILE:.0f} tiles, position corrected.")
-    else:
-        advance(seg.distance())
-    time.sleep(PAUSE)
+    # Keep moving (the next drive takes over without stopping), but update the position from the encoders
+    advance(seg.distance())
+    name = f"Line at {axis} = {line / TILE:.0f} tiles"
+    true_pos = line * sign - SENSOR_OFFSET       # where the axle SHOULD have been when the sensors were on it
+
+    if left_hit is None and right_hit is None:
+        print(f"{name}: missed, using the encoders only.")
+        return
+
+    # A hit that would move the position by more than MAX_POS_FIX is a false reading (wood grain, dirt)
+    if left_hit is not None and abs(true_pos - left_hit) > MAX_POS_FIX:
+        print(f"{name}: LEFT reading looks false, ignoring it.")
+        left_hit = None
+    if right_hit is not None and abs(true_pos - right_hit) > MAX_POS_FIX:
+        print(f"{name}: RIGHT reading looks false, ignoring it.")
+        right_hit = None
+    if left_hit is None and right_hit is None:
+        print(f"{name}: no good reading, using the encoders only.")
+        return
+
+    hits = [h for h in (left_hit, right_hit) if h is not None]
+    error = true_pos - sum(hits) / len(hits)     # how far off the position was, along the path
+    set_axis(axis, get_axis(axis) + sign * error)
+
+    if len(hits) == 1:
+        side = "LEFT" if left_hit is not None else "RIGHT"
+        print(f"{name}: only {side} sensor crossed. Position fixed by {error:+.1f} cm, heading kept.")
+        return
+
+    # Right sensor crossing later than the left = robot is turned clockwise
+    crooked = math.degrees(math.atan((right_hit - left_hit) / SENSOR_SPACING))
+    if abs(crooked) > MAX_ANGLE_FIX:
+        print(f"{name}: angle {crooked:+.1f} deg looks wrong, position fixed only.")
+        return
+    # Move the heading only part of the way toward the measured value, so one noisy reading can't steer us off
+    leg_heading = round(heading / 90) * 90
+    measured = leg_heading + crooked + ALIGN_TRIM
+    heading = wrap_angle(heading + ANGLE_GAIN * ((measured - heading + 540) % 360 - 180))
+    print(f"{name}: position fixed by {error:+.1f} cm, robot is {crooked:+.1f} deg off.")
 
 
 # ============================ NAVIGATION ============================
@@ -386,7 +430,7 @@ def travel_axis(axis, target):
                     and (sensor_end - n * TILE) * sign >= 0),
                    key=lambda pos: pos * sign)
     for line in lines:
-        drive_to_line(axis, sign, line)
+        drive_through_line(axis, sign, line)
 
     # Last bit from the last line (or from the start) with the encoders
     drive_straight((target - get_axis(axis)) * sign)

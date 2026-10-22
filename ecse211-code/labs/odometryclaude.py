@@ -85,7 +85,6 @@ LINE_SLACK = 6.0         # cm, if no line is seen this far past where it should 
 LEFT_LINE_RATIO = 0.97   # measured: wood sum ~1370 (1350-1388), line ~1296 (1286-1305) -> threshold ~1329
 RIGHT_LINE_RATIO = 0.75  # measured: wood red ~22 (18-23), line ~13.5 (13-14) -> threshold ~16.5
 LINE_CONFIRM_DIST = 0.3  # cm a sensor must stay dark before a line counts (filters noise)
-SENSOR_WARMUP = 0.5      # s of readings thrown away before calibrating (EV3 can read 0 at startup)
 
 # --- Odometer ---
 ODO_PERIOD = 0.01        # s between odometer updates
@@ -306,22 +305,13 @@ def read_light(sensor):
 
 
 def average_red(sensor, samples=20, timeout=3.0):
-    """Average wood brightness under a sensor. Skips startup readings and zeros."""
-    # Throw away the first readings: an EV3 sensor can return 0 right after it starts
-    warmup_end = time.time() + SENSOR_WARMUP
-    while time.time() < warmup_end:
-        read_light(sensor)
-        time.sleep(0.01)
-
     readings = []
     start = time.time()
     while len(readings) < samples:
         if time.time() - start > timeout:
-            raise RuntimeError(f"Light sensor on port {sensor.port} gave no usable readings "
-                               f"({len(readings)} of {samples}). "
-                               "Check the cable and that it's over wood.")
+            raise RuntimeError(f"Light sensor on port {sensor.port} returned no readings.")
         value = read_light(sensor)
-        if value:          # skips both None and 0
+        if value is not None:
             readings.append(value)
         time.sleep(0.01)
     return sum(readings) / len(readings)
@@ -351,8 +341,7 @@ def on_line_tracked(name, sensor, threshold, wood):
     value = read_light(sensor)
     if value is None:
         return False
-    if wood > 0:
-        darkest[name] = min(darkest.get(name, 999), 100 * value / wood)
+    darkest[name] = min(darkest.get(name, 999), 100 * value / wood)
     return value < threshold
 
 
@@ -558,8 +547,7 @@ def run_sensor_test():
         if value is None:
             return "  no reading      "
         state = "LINE" if value < threshold else "wood"
-        pct = 100 * value / wood if wood > 0 else 0
-        return f"{value:6.1f} = {pct:4.0f}% of wood  {state}"
+        return f"{value:6.1f} = {100 * value / wood:4.0f}% of wood  {state}"
 
     while True:
         lv, rv = read_light(left_light), read_light(right_light)
